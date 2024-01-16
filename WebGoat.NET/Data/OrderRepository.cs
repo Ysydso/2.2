@@ -54,9 +54,20 @@ namespace WebGoatCore.Data
                 order.OrderId = Convert.ToInt32(dataReader[0]);
             }
 
+            sql = "INSERT INTO OrderDetails (" +
+                "OrderId, ProductId, UnitPrice, Quantity, Discount" +
+                ") VALUES (@OrderId, @ProductId, @UnitPrice, @Quantity, @Discount)";
+                command.CommandText = sql;
+                _context.Database.OpenConnection();
+
+                using var dataReader = command.ExecuteReader();
+                dataReader.Read();
+                order.OrderId = Convert.ToInt32(dataReader[0]);
+            }
+
             sql = ";\nINSERT INTO OrderDetails (" +
                 "OrderId, ProductId, UnitPrice, Quantity, Discount" +
-                ") VALUES ";
+                ") VALUES (@OrderId, @ProductId, @UnitPrice, @Quantity, @Discount)";
             foreach (var (orderDetails, i) in order.OrderDetails.WithIndex())
             {
                 orderDetails.OrderId = order.OrderId;
