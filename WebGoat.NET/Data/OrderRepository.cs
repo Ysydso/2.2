@@ -27,26 +27,33 @@ namespace WebGoatCore.Data
         public int CreateOrder(Order order)
         {
             Thread.CurrentThread.CurrentCulture = new CultureInfo("en-US");
-            // These commented lines cause EF Core to do wierd things.
-            // Instead, make the query manually.
-
-            // order = _context.Orders.Add(order).Entity;
-            // _context.SaveChanges();
-            // return order.OrderId;
 
             string shippedDate = order.ShippedDate.HasValue ? "'" + string.Format("yyyy-MM-dd", order.ShippedDate.Value) + "'" : "NULL";
             var sql = "INSERT INTO Orders (" +
                 "CustomerId, EmployeeId, OrderDate, RequiredDate, ShippedDate, ShipVia, Freight, ShipName, ShipAddress, " +
                 "ShipCity, ShipRegion, ShipPostalCode, ShipCountry" +
                 ") VALUES (" +
-                $"'{order.CustomerId}','{order.EmployeeId}','{order.OrderDate:yyyy-MM-dd}','{order.RequiredDate:yyyy-MM-dd}'," +
-                $"{shippedDate},'{order.ShipVia}','{order.Freight}','{order.ShipName}','{order.ShipAddress}'," +
-                $"'{order.ShipCity}','{order.ShipRegion}','{order.ShipPostalCode}','{order.ShipCountry}')";
+                "@CustomerId, @EmployeeId, @OrderDate, @RequiredDate, " +
+                $"{shippedDate}, @ShipVia, @Freight, @ShipName, @ShipAddress, " +
+                "@ShipCity, @ShipRegion, @ShipPostalCode, @ShipCountry)";
             sql += ";\nSELECT OrderID FROM Orders ORDER BY OrderID DESC LIMIT 1;";
 
             using (var command = _context.Database.GetDbConnection().CreateCommand())
             {
                 command.CommandText = sql;
+                command.Parameters.AddWithValue("@CustomerId", order.CustomerId);
+                command.Parameters.AddWithValue("@EmployeeId", order.EmployeeId);
+                command.Parameters.AddWithValue("@OrderDate", order.OrderDate);
+                command.Parameters.AddWithValue("@RequiredDate", order.RequiredDate);
+                command.Parameters.AddWithValue("@ShipVia", order.ShipVia);
+                command.Parameters.AddWithValue("@Freight", order.Freight);
+                command.Parameters.AddWithValue("@ShipName", order.ShipName);
+                command.Parameters.AddWithValue("@ShipAddress", order.ShipAddress);
+                command.Parameters.AddWithValue("@ShipCity", order.ShipCity);
+                command.Parameters.AddWithValue("@ShipRegion", order.ShipRegion);
+                command.Parameters.AddWithValue("@ShipPostalCode", order.ShipPostalCode);
+                command.Parameters.AddWithValue("@ShipCountry", order.ShipCountry);
+
                 _context.Database.OpenConnection();
 
                 using var dataReader = command.ExecuteReader();
@@ -57,24 +64,29 @@ namespace WebGoatCore.Data
             sql = "INSERT INTO OrderDetails (" +
                 "OrderId, ProductId, UnitPrice, Quantity, Discount" +
                 ") VALUES (@OrderId, @ProductId, @UnitPrice, @Quantity, @Discount)";
-                command.CommandText = sql;
-                _context.Database.OpenConnection();
-
-                using var dataReader = command.ExecuteReader();
-                dataReader.Read();
-                order.OrderId = Convert.ToInt32(dataReader[0]);
-            }
-
-            sql = ";\nINSERT INTO OrderDetails (" +
-                "OrderId, ProductId, UnitPrice, Quantity, Discount" +
-                ") VALUES (@OrderId, @ProductId, @UnitPrice, @Quantity, @Discount)";
             foreach (var (orderDetails, i) in order.OrderDetails.WithIndex())
             {
                 orderDetails.OrderId = order.OrderId;
                 sql += (i > 0 ? "," : "") +
-                    $"('{orderDetails.OrderId}','{orderDetails.ProductId}','{orderDetails.UnitPrice}','{orderDetails.Quantity}'," +
-                    $"'{orderDetails.Discount}')";
+                    $"(@OrderId, @ProductId{i}, @UnitPrice{i}, @Quantity{i}, @Discount{i})";
+
+                command.CommandText = sql;
+                command.Parameters.AddWithValue($"@ProductId{i}", orderDetails.ProductId);
+                command.Parameters.AddWithValue($"@UnitPrice{i}", orderDetails.UnitPrice);
+                command.Parameters.AddWithValue($"@Quantity{i}", orderDetails.Quantity);
+                command.Parameters.AddWithValue($"@Discount{i}", orderDetails.Discount);
             }
+
+            // Execute the final SQL statement with all the parameters
+            using (var command = _context.Database.GetDbConnection().CreateCommand())
+            {
+                command.CommandText = sql;
+                _context.Database.OpenConnection();
+                command.ExecuteNonQuery();
+            }
+
+            return order.OrderId;
+        }
 
             if (order.Shipment != null)
             {
